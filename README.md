@@ -1,1 +1,337 @@
 # pancakeswap-IFOPool-smart-contract-Reviews
+
+The IFOPool smart contract is a contract made to manage funds for a type staking pool, known as an Initial Farm Offering (IFO) pool. Users can deposit tokens, accumulate shares based on their deposits, and withdraw with possible penalties depending on the time of their actions.
+
+The pragma solidity 0.6.12; specifies that this contract should be compiled with Solidity version 0.6.12, ensuring compatibility with that version.
+
+The contract makes use of external contracts which it is importing from OpenZeppelin contracts ( Ownable, Pausable, SafeMath, SafeERC20 ) and an Interface (IMasterChef) 
+
+#### OWNABLE.sol :
+This provides access to the OpenZeppelin Ownable contract, which provides authorization and ownership to the IFOPool contract. The Ownable contract grants ownership to the deploying address giving them permission to call onlyOwner functions.
+
+#### PAUSABLE.sol :
+The Pausable contract allows the owner to pause all contract functions annotated with whenNotPaused. It’s useful for security as it allows the owner to stop all critical contract operations in case of emergencies.
+
+#### SAFEMATH.sol : 
+Seeing as the contract is below 0.8.0, the contract does not have default overflow/underflow checks, The SafeMath library adds overflow protection to arithmetic operations (addition, subtraction, multiplication, and division). In IFOPool, SafeMath is used in several calculations to ensure safety from overflow.
+
+#### SAFEERC20.sol :
+This library ensures that ERC20 token transfers (depositing and withdrawing) are handled safely, preventing unexpected failures. By wrapping standard ERC20 calls in SafeERC20 functions, the contract avoids transfer failures from token reverts.
+
+### INTERFACES
+IMasterChef.sol : IMasterChef is an interface that interacts with the staking contract. This interface contains the functions required to function, effectively allowing the IFOPool to stake user funds in the external contract.
+
+Usage in IFOPool:--
+
+Staking operations 
+```solidity
+function enterStaking(uint256 _amount) external;
+```
+
+Unstaking: function 
+```solidity
+leaveStaking(uint256 _amount) external;
+```
+
+Emergency withdrawal: 
+```solidity
+function emergencyWithdraw(uint256 _pid) external;
+```
+
+Reward checking: 
+```solidity
+function pendingCake(uint256 _pid, address _user) external view returns (uint256);
+```
+
+
+### CONTRACT VARIABLES
+
+struct UserInfo {
+    uint256 shares;
+    uint256 lastDepositedTime;
+    uint256 cakeAtLastUserAction;
+    uint256 lastUserActionTime;
+}
+
+This struct holds the user's information:
+
+shares: Represents the user's share in the pool.
+lastDepositedTime: Timestamp of the user's last deposit, crucial for calculating early withdrawal fees.
+cakeAtLastUserAction: Tracks the amount of tokens at the last user action (deposit/withdraw).
+lastUserActionTime: Timestamp of the last user action, useful for calculating fees or penalties based on inactivity.
+
+
+struct UserIFOInfo {
+    uint256 lastActionBalance;
+    uint256 lastValidActionBalance;
+    uint256 lastActionBlock;
+    uint256 lastValidActionBlock;
+    uint256 lastAvgBalance;
+}
+This struct is specific to IFOs and maintains a history of user actions and balances:
+
+- lastActionBalance and lastValidActionBalance store the user’s balance for tracking purposes within IFO validity periods.
+- lastActionBlock and lastValidActionBlock track the block numbers associated with these actions.
+- lastAvgBalance calculates the average balance within the IFO period, often used to determine eligibility for rewards in an IFO.
+
+
+enum IFOActions {
+    Deposit,
+    Withdraw
+}
+Enumerates possible actions, allowing the _updateUserIFO function to distinguish between deposits and withdrawals.
+
+
+### State Variables:
+
+```IERC20 public immutable token:``` The main token used in the pool (CAKE).
+
+```IERC20 public immutable receiptToken:``` The receipt token issued by MasterChef upon staking to represent user's stake in the pool.
+
+```IMasterChef public immutable masterchef:``` MasterChef contract interface, where staking occurs.
+
+```mapping(address => UserInfo) public userInfo:``` Tracks each user's staking details.
+
+```mapping(address => UserIFOInfo) public userIFOInfo:``` Tracks each user's IFO-specific information.
+
+```uint256 public startBlock and uint256 public endBlock:``` Define the block range for IFO eligibility.
+
+```uint256 public totalShares:``` Tracks the total shares issued to all users, representing pool ownership.
+
+```address public admin:``` Administrator’s address, used for exclusive admin functionality.
+
+```address public treasury:``` Treasury address to collect fees.
+
+```Constants for maximum fees and other parameters, like:```
+
+```MAX_PERFORMANCE_FEE, MAX_CALL_FEE, MAX_WITHDRAW_FEE, MAX_WITHDRAW_FEE_PERIOD:``` Define maximum fees and withdrawal limits for the contract.
+
+
+### Constructor
+
+- Initializes contract with core parameters
+- Sets up token approvals for MasterChef
+- Ensures start block is in future
+- Ensures end block is after start block
+- Assigns immutable token addresses
+- Sets admin and treasury addresses
+- Sets IFO period blocks
+- Approves MasterChef for token transfers
+
+The constructor initializes the contract and performs initial checks on startBlock and endBlock. Additionally, it grants infinite approval of the token to the MasterChef contract, allowing IFOPool to stake the deposited tokens without needing re-approvals. This ensures that the pool can stake user deposits immediately without further authorization.
+
+## Modifiers
+
+#### ONLYADMIN:
+
+modifier onlyAdmin() {
+    require(msg.sender == admin, "admin: wut?");
+    _;
+} 
+
+- This restricts functions its applied to, to be called only by the contract owner.
+
+#### NOTCONTRACT:
+
+modifier notContract() {
+    require(!_isContract(msg.sender), "contract not allowed");
+    require(msg.sender == tx.origin, "proxy contract not allowed");
+    _;
+}
+
+- Prevents smart contracts or proxies from interacting with this contract by ensuring msg.sender is not a contract and that it directly originates from the user’s wallet. Makes use of internal helper function ```_isContract``` that returns boolean value to verify is caller is contract.
+
+```modifier whenNotPaused```: Prevents deposits when contract is paused
+```modifier notContract```: Prevents contract interactions
+
+
+## FUNCTIONS
+
+#### DEPOSIT() FUNCTION
+
+```solidity
+  function deposit(uint256 _amount) external whenNotPaused notContract
+```
+
+- Deposits funds into the Cake Vault.
+- Only possible when contract not paused as a result of the whenNotPaused modifier. 
+- Only callable by EOAs and not contracts
+
+* param - `_amount`: number of tokens to deposit (in CAKE)
+
+Process Flow:
+
+The deposit function first validates the amount to be deposited. It then calculates the current pool balance and transfers the tokens from the user. The function also calculates the shares as follows:
+
+For the first deposit, the shares are equal to the amount. For subsequent deposits, the shares are calculated as (amount * totalShares) / pool.
+The function then updates the user information by adding the shares, updating the deposit timestamp, and updating the last action metrics.
+It also updates the total shares and IFO tracking, stakes the tokens in MasterChef, and emits a deposit event.
+
+
+#### GETUSERCREDIT() FUNCTION
+
+```function getUserCredit(address _user) external view returns (uint256 avgBalance)```
+
+This function is used by the contract to assess a user’s eligibility or participation level in IFOs, ensuring users with higher or sustained balances have better opportunities in IFO allocations.
+
+The getUserCredit function calculates a user’s average balance based on their historical actions, which is relevant to Initial Farm Offering (IFO) eligibility or participation. This average balance is important as it can influence the user’s allocation in IFOs based on their pool contribution over time. The function first retrieves the `UserIFOInfo` data for the given user, then checks if an IFO is currently active by calling `isIFOAvailable()`. If an IFO is available, it calls `_calculateAvgBalance` with the user's historical balance and action data to determine the latest average balance. If an IFO is not available, it sets avgBalance to 0. `_calculateAvgBalance` uses parameters like `lastActionBlock` and `lastValidActionBlock` to calculate a time-weighted balance average that fairly represents the user's stake in the pool. The function returns the calculated average balance (or 0 if no IFO is active).
+
+
+#### WITHDRAW() FUNCTION
+
+```function withdraw(uint256 _shares) public notContract```
+
+Purpose: Allows a user to withdraw a specified amount of shares from the pool, applies any applicable fees, and updates IFO-related data.
+
+* Dependents :
+
+`available()` - Custom logic for how much the vault allows to be borrowed
+`leaveStaking()` - Unstaking function from the IMasterChef Interface
+`balanceOf()` - Calculates the total underlying tokens, It includes tokens held by the contract and held in MasterChef
+
+- Checks that _shares is greater than zero, meaning the user is attempting to withdraw a positive amount.
+- Ensures the user has enough shares to complete the withdrawal by comparing _shares with user.shares.
+
+Determines the amount of underlying token (currentAmount) corresponding to the _shares the user wants to withdraw, `(balanceOf() * _shares) / totalShares`.
+The withdrawal process involves several steps. First, it stores the amount to be withdrawn (currentAmount) for IFO tracking purposes. It then updates the user's and total share balances by deducting the withdrawn shares. If the pool's balance is insufficient to cover the withdrawal, it withdraws the deficit from the IMasterChef staking pool and adjusts the currentAmount accordingly. An early withdrawal fee is applied if the withdrawal occurs within a certain period of the user's last deposit, and the fee is transferred to the treasury. The user's balance information is updated, including their CAKE balance and last action timestamp. The IFO data is also updated to reflect the withdrawal. Finally, the currentAmount is transferred to the user, and a Withdraw event is emitted to log the transaction details.
+
+The `WithdrawAll` function depend on the `withdraw` function to perform.
+
+
+#### WITHDRAWALL() FUNCTION
+
+```function withdrawAll() external notContract```
+
+This provides users with a simple way to withdraw all of their holdings from the pool.
+
+The `withdrawAll` function enables users to withdraw their entire share of funds from the pool in a single action. It achieves this by calling the `withdraw` function with the user's total shares, which then transfers the user's proportional amount of CAKE or other tokens based on their share ownership. This function is protected by the notContract modifier, ensuring that only non-contract addresses can call it, thereby preventing automated contracts or bots from accessing it.
+
+
+#### EMERGENCYWITHDRAWALL() FUNCTION
+
+```function emergencyWithdrawAll() external notContract```
+
+Useful for users who need immediate access to their funds in case of emergencies.
+
+* Dependents : 
+`_zeroFreeIFO();` - sets userIFOInfo to initial state
+`withdrawV1(userInfo[msg.sender].shares);` - original Withdraws implementation from funds, the logic same as Cake Vault withdraw
+    notice this function visibility change to internal, call only be called by `emergencyWithdrawAll` function
+    param _shares: Number of shares to withdraw
+
+The `emergencyWithdrawAll` function enables users to withdraw all their funds in emergency situations, simultaneously resetting their IFO-related status and balance records. It executes by first calling _zeroFreeIFO() to clear IFO data, ensuring no residual IFO eligibility or status. Then, it calls withdrawV1 with the user's total shares to facilitate the withdrawal, which may bypass or modify certain conditions like fee structures or lock periods. The notContract modifier ensures only non-contract addresses can initiate this function, preventing automated entities from doing so.
+
+
+#### HARVEST() FUNCTION
+
+```function harvest() external notContract whenNotPaused```
+
+This function reinvests any CAKE tokens earned by the pool back into the MasterChef contract.
+
+The harvest function is designed to reinvest CAKE tokens earned by the pool back into the MasterChef contract, maximizing returns. It can only be called by external addresses when the contract is not paused, ensuring owner control and preventing automated contract exploitation. The function first checks the current CAKE balance, then triggers a harvest action without withdrawing staked tokens to pull in pending rewards. The earned amount is calculated, and if positive, performance and call fees are applied and distributed to the treasury and the caller, respectively. The remaining tokens are then staked back into MasterChef to continue earning rewards, and the last harvest time is updated.
+The Harvest event logs the caller, performance fee, and call fee.
+
+* Dependents :
+
+`available()` - Custom logic for how much the vault allows to be borrowed
+`safeTransfer()` - Openzeppelin safeTransfer function
+`_earn()` - Deposits tokens into MasterChef to earn staking rewards
+
+
+## HELPER FUNCTIONS
+
+#### AVAILABLE() FUNCTION
+
+```function available() public view returns (uint256)```
+
+* Public
+* Returns uint256
+
+This function returns the balance of CAKE tokens held in the contract. It provides the current balance of CAKE in the contract, which is useful for operations like determining how much CAKE is available for reinvestment or withdrawal. Returns the balance in uint256 OF token.balanceOf(address(this)).
+
+#### _EARN() FUNCTION
+
+```function _earn() internal```
+
+* Internal
+
+This function Deposits tokens into MasterChef to earn staking rewards. The current CAKE balance is retrieved via `available()`. If bal is greater than zero, the entire balance is staked by calling enterStaking(bal) on the MasterChef contract. this function compounds rewards by consistently increasing the stake in MasterChef.
+
+
+#### BALANCEOF() FUNCTION
+
+```function balanceOf() public view returns (uint256)```
+
+* Public 
+* Returns `uint256` in balance
+
+- This function calculates the total CAKE held by the contract, including staked CAKE in MasterChef.
+- Calls `IMasterChef(masterchef).userInfo(0, address(this))` to get the staked CAKE amount in MasterChef.
+- Adds this amount to the CAKE balance of the contract `(token.balanceOf(address(this)))`.
+- Returns uint256 as the sum represents the total CAKE balance available to the contract.
+
+
+#### _isContract() FUNCTION
+
+```function _isContract(address addr) internal view returns (bool)```
+
+* Params - address _addr (address to be checked for code)
+* Returns - `true` or `false` if the address is a contract address or not
+
+This function is used to verify if a given address is a contract by checking the size of the code at that address.
+
+The `_isContract()` function uses inline assembly to determine if a given address is a contract. It does this by checking the size of the code stored at the address ``size := extcodesize(_addr)``. If the size is greater than 0, it returns true, indicating that the address is a contract. This function is used in the notContract modifier, which restricts access to certain functions from contract addresses.
+
+
+#### calculateHarvestCakeRewards() FUNCTION
+
+```function calculateHarvestCakeRewards() external view returns (uint256)```
+
+* External
+* Returns `uint256` - the amount of CAKE rewards available to harvest
+
+This function calculates the current pending CAKE rewards that the contract has earned but hasn’t yet claimed from the MasterChef contract.
+
+This function calculates the current pending CAKE rewards that the contract has earned but hasn’t yet claimed from the MasterChef contract. It does this by calling `IMasterChef(masterchef).pendingCake(0, address(this))`, where the 0 represents the pid (pool ID) of the main CAKE staking pool. The function returns the amount of CAKE rewards available for harvesting, which is useful for users or other contracts to determine the amount of CAKE that could be reinvested immediately.
+
+
+#### calculateTotalPendingCakeRewards() FUNCTION
+
+
+* External
+* Returns `uint256` - the total CAKE rewards
+
+```function calculateTotalPendingCakeRewards() external view returns (uint256)```
+
+This function calculates the total amount of CAKE rewards, both those already available in the contract and those still pending in MasterChef.
+
+This function calculates the total CAKE rewards by summing the contract's current CAKE balance, obtained through the `available()` function, and the pending CAKE rewards from MasterChef, retrieved via `IMasterChef(masterchef).pendingCake(0, address(this))`. The result is the total CAKE reward balance, which is useful for determining the overall reward amount without the need for immediate harvesting.
+
+
+#### totalShares() FUNCTION
+
+* External
+* Returns `uint256` - the total shares
+
+```function totalShares() external view returns (uint256)```
+
+Purpose: This function returns the total number of shares issued to users in the pool.
+
+This function returns the total number of shares issued to users in the pool, which is stored in the state variable `_totalShares`. This information is crucial for calculating the relative ownership of shares in the pool, particularly for distributing profits and determining user balances.
+
+
+
+#### calculateSharePrice FUNCTION
+
+```function calculateSharePrice() external view returns (uint256)```
+
+* External
+* Returns `uint256` the price per share
+
+This function calculates the current price of each share in terms of CAKE tokens.
+
+The `calculateSharePrice` function determines the current price of each share in CAKE tokens. If there are no shares, it defaults to a one-to-one price in Wei (1e18). Otherwise, it calculates the share price by dividing the balance by the total shares, scaled by 1e18 for precision in Wei. This function is useful for estimating the value of each user's share in the pool.
+
+
+
+
