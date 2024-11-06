@@ -129,7 +129,7 @@ modifier onlyAdmin() {
     _;
 } 
 
-- This restricts functions its applied to, to be called only by the contract owner.
+- This restricts functions it's applied to, to be called only by the contract owner.
 
 #### NOTCONTRACT:
 
@@ -163,16 +163,18 @@ Process Flow:
 
 The deposit function first validates the amount to be deposited. It then calculates the current pool balance and transfers the tokens from the user. The function also calculates the shares as follows:
 
-For the first deposit, the shares are equal to the amount. For subsequent deposits, the shares are calculated as (amount * totalShares) / pool.
+The shares are equal to the amount for the first deposit. For subsequent deposits, the shares are calculated as (amount * totalShares) / pool.
 The function then updates the user information by adding the shares, updating the deposit timestamp, and updating the last action metrics.
 It also updates the total shares and IFO tracking, stakes the tokens in MasterChef, and emits a deposit event.
 
 
 #### GETUSERCREDIT() FUNCTION
 
-```function getUserCredit(address _user) external view returns (uint256 avgBalance)```
+```solidity
+function getUserCredit(address _user) external view returns (uint256 avgBalance)
+```
 
-This function is used by the contract to assess a user’s eligibility or participation level in IFOs, ensuring users with higher or sustained balances have better opportunities in IFO allocations.
+The contract uses this function to assess a user’s eligibility or participation level in IFOs, ensuring users with higher or sustained balances have better opportunities in IFO allocations.
 
 The getUserCredit function calculates a user’s average balance based on their historical actions, which is relevant to Initial Farm Offering (IFO) eligibility or participation. This average balance is important as it can influence the user’s allocation in IFOs based on their pool contribution over time. The function first retrieves the `UserIFOInfo` data for the given user, then checks if an IFO is currently active by calling `isIFOAvailable()`. If an IFO is available, it calls `_calculateAvgBalance` with the user's historical balance and action data to determine the latest average balance. If an IFO is not available, it sets avgBalance to 0. `_calculateAvgBalance` uses parameters like `lastActionBlock` and `lastValidActionBlock` to calculate a time-weighted balance average that fairly represents the user's stake in the pool. The function returns the calculated average balance (or 0 if no IFO is active).
 
@@ -200,7 +202,9 @@ The `WithdrawAll` function depend on the `withdraw` function to perform.
 
 #### WITHDRAWALL() FUNCTION
 
-```function withdrawAll() external notContract```
+```solidity
+function withdrawAll() external notContract
+```
 
 This provides users with a simple way to withdraw all of their holdings from the pool.
 
@@ -209,7 +213,9 @@ The `withdrawAll` function enables users to withdraw their entire share of funds
 
 #### EMERGENCYWITHDRAWALL() FUNCTION
 
-```function emergencyWithdrawAll() external notContract```
+```solidity
+function emergencyWithdrawAll() external notContract
+```
 
 Useful for users who need immediate access to their funds in case of emergencies.
 
@@ -224,7 +230,9 @@ The `emergencyWithdrawAll` function enables users to withdraw all their funds in
 
 #### HARVEST() FUNCTION
 
-```function harvest() external notContract whenNotPaused```
+```solidity
+function harvest() external notContract whenNotPaused
+```
 
 This function reinvests any CAKE tokens earned by the pool back into the MasterChef contract.
 
@@ -238,11 +246,126 @@ The Harvest event logs the caller, performance fee, and call fee.
 `_earn()` - Deposits tokens into MasterChef to earn staking rewards
 
 
+#### setAdmin() FUNCTION
+
+```solidity
+function setAdmin(address _admin) external onlyOwner
+```
+
+* External
+* Sets admin address
+* Only callable by the contract owner.
+* Params - `address _admin` address of new admin
+
+This function enables the contract owner to designate or modify the admin address, ensuring it is not a zero address. It is exclusively callable by the owner and serves to define or update the admin responsible for executing administrative tasks within the contract.
+
+
+#### setTreasury() FUNCTION
+
+```solidity
+function setTreasury(address _treasury) external onlyOwner
+```
+
+* External
+* Sets treasury address
+* Only callable by the contract owner.
+* Params - `address _treasury` address to the new treasury
+
+Sets the treasury address, where funds or fees collected by the contract might be sent.
+
+This function can only be executed by the contract owner and ensures the address isn't zero. It allows the owner to update the treasury address if necessary.
+
+
+#### setPerformanceFee() FUNCTION
+
+```solidity
+function setPerformanceFee(uint256 _performanceFee) external onlyAdmin
+```
+
+* External
+* Sets performance fee
+* Only callable by the contract admin.
+
+This function allows the contract admin to set a performance fee, which is a percentage-based fee levied on profits. The admin can adjust this fee as needed, but it is restricted from exceeding the predefined maximum limit, MAX_PERFORMANCE_FEE. This ensures that the performance fee remains within a reasonable and controlled range, preventing excessive fees from being imposed. By enabling the admin to adjust the performance fee within these defined limits, the function provides flexibility and adaptability in managing the contract's fee structure.
+
+
+
+#### setCallFee() FUNCTION
+
+```solidity
+function setCallFee(uint256 _callFee) external onlyAdmin 
+```
+
+* External
+* Sets call fee
+* Only callable by the contract admin.
+
+The `setCallFee` function is designed to set a call fee, which can be applied to transactions initiated by users or other functions. This function is restricted to the admin and ensures that the fee does not exceed the maximum call fee, as defined by MAX_CALL_FEE. The purpose of this function is to allow for the setting of a fee within defined bounds, which can be used to incentivize or cover certain operational costs.
+
+
+#### setWithdrawFee() FUNCTION
+
+```solidity
+function setWithdrawFee(uint256 _withdrawFee) external onlyAdmin 
+```
+
+* External
+* Sets withdraw fee
+* Only callable by the contract admin.
+
+This function allows the admin to set a withdrawal fee, which is a charge applied to users when they withdraw funds from the contract. The admin can adjust this fee within a predefined limit, MAX_WITHDRAW_FEE, ensuring that the fee remains reasonable and controlled.
+
+
+
+#### setWithdrawFeePeriod() FUNCTION
+
+```solidity
+function setWithdrawFeePeriod(uint256 _withdrawFeePeriod) external onlyAdmin
+```
+
+* External
+* Sets withdraw fee period
+* Only callable by the contract admin.
+
+This function sets the duration during which a withdrawal fee is applicable after a deposit, accessible only to the admin and ensuring the period does not surpass MAX_WITHDRAW_FEE_PERIOD. Its purpose is to discourage short-term withdrawals by imposing a fee within a defined timeframe.
+
+
+
+#### updateStartAndEndBlocks() FUNCTION 
+
+```solidity
+function updateStartAndEndBlocks(uint256 _startBlock, uint256 _endBlock) external onlyAdmin 
+```
+
+* It allows the admin to update start and end blocks
+* This function is only callable by owner.
+* _startBlock: the new start block
+* _endBlock: the new end block
+* Evnts - Emits `UpdateStartAndEndBlocks(_startBlock, _endBlock)`
+
+This function is used to update the start and end blocks of a specific activity or contract functionality, such as a staking or IFO period. It is restricted to the admin, with checks ensuring the start block is in the future and precedes the end block. This function is used to control when a certain feature (e.g., rewards program) is active by setting valid block ranges.
+
+
+#### updateEndBlock() FUNCTION
+
+```solidity
+function updateEndBlock(uint256 _endBlock) external onlyAdmin 
+```
+
+* It allows the admin to update end block
+* This function is only callable by owner.
+* _endBlock: the new end block
+
+This function enables the admin to prolong the end block of a specific period, such as staking rewards or IFO, as long as the new end block is in the future. This admin-only functionality provides flexibility in extending the duration of a feature if necessary.
+
+
 ## HELPER FUNCTIONS
 
 #### AVAILABLE() FUNCTION
 
-```function available() public view returns (uint256)```
+```solidity
+function available() public view returns (uint256)
+```
 
 * Public
 * Returns uint256
@@ -251,7 +374,9 @@ This function returns the balance of CAKE tokens held in the contract. It provid
 
 #### _EARN() FUNCTION
 
-```function _earn() internal```
+```solidity
+function _earn() internal
+```
 
 * Internal
 
@@ -260,7 +385,9 @@ This function Deposits tokens into MasterChef to earn staking rewards. The curre
 
 #### BALANCEOF() FUNCTION
 
-```function balanceOf() public view returns (uint256)```
+```solidity
+function balanceOf() public view returns (uint256)
+```
 
 * Public 
 * Returns `uint256` in balance
@@ -273,7 +400,9 @@ This function Deposits tokens into MasterChef to earn staking rewards. The curre
 
 #### _isContract() FUNCTION
 
-```function _isContract(address addr) internal view returns (bool)```
+```solidity
+function _isContract(address addr) internal view returns (bool)
+```
 
 * Params - address _addr (address to be checked for code)
 * Returns - `true` or `false` if the address is a contract address or not
@@ -285,7 +414,9 @@ The `_isContract()` function uses inline assembly to determine if a given addres
 
 #### calculateHarvestCakeRewards() FUNCTION
 
-```function calculateHarvestCakeRewards() external view returns (uint256)```
+```solidity
+function calculateHarvestCakeRewards() external view returns (uint256)
+```
 
 * External
 * Returns `uint256` - the amount of CAKE rewards available to harvest
@@ -301,7 +432,9 @@ This function calculates the current pending CAKE rewards that the contract has 
 * External
 * Returns `uint256` - the total CAKE rewards
 
-```function calculateTotalPendingCakeRewards() external view returns (uint256)```
+```solidity
+function calculateTotalPendingCakeRewards() external view returns (uint256)
+```
 
 This function calculates the total amount of CAKE rewards, both those already available in the contract and those still pending in MasterChef.
 
@@ -313,7 +446,9 @@ This function calculates the total CAKE rewards by summing the contract's curren
 * External
 * Returns `uint256` - the total shares
 
-```function totalShares() external view returns (uint256)```
+```solidity
+function totalShares() external view returns (uint256)
+```
 
 Purpose: This function returns the total number of shares issued to users in the pool.
 
@@ -323,7 +458,9 @@ This function returns the total number of shares issued to users in the pool, wh
 
 #### calculateSharePrice FUNCTION
 
-```function calculateSharePrice() external view returns (uint256)```
+```solidity
+function calculateSharePrice() external view returns (uint256)
+```
 
 * External
 * Returns `uint256` the price per share
@@ -333,5 +470,75 @@ This function calculates the current price of each share in terms of CAKE tokens
 The `calculateSharePrice` function determines the current price of each share in CAKE tokens. If there are no shares, it defaults to a one-to-one price in Wei (1e18). Otherwise, it calculates the share price by dividing the balance by the total shares, scaled by 1e18 for precision in Wei. This function is useful for estimating the value of each user's share in the pool.
 
 
+#### _isIFOAvailable() FUNCTION
+
+```solidity
+function _isIFOAvailable() internal view returns (bool) 
+```
+
+* Internal
+* Returns a boolen value
+
+The `_isIFOAvailable` function determines if the Initial Farm Offering (IFO) is currently active by comparing the current block number to the start block of the IFO. It returns `true` if the current block is after the start block, indicating the IFO is available, and `false` otherwise. This function is used to conditionally execute code that should only run during the IFO period.
 
 
+#### _isValidActionBlock() FUNCTION
+
+```solidity
+function _isValidActionBlock() internal view returns (bool) 
+```
+
+* Internal
+* This function only be called to judge whether to update last action block.
+* Only block number between start block and end block to update last action block.
+* Returns `bool`
+
+Prevents actions from updating IFO information once the IFO period has ended.
+
+This function determines if the current block is within the valid range for recording a user's IFO actions, which is between the startBlock and endBlock. It returns true if the current block is within the IFO period and false otherwise.
+
+
+#### _calculateAvgBalance() FUNCTION
+
+```solidity
+function _calculateAvgBalance(
+    uint256 _lastActionBlock,
+    uint256 _lastValidActionBlock,
+    uint256 _lastActionBalance,
+    uint256 _lastValidActionBalance,
+    uint256 _lastAvgBalance
+) internal view returns (uint256 avgBalance)
+```
+
+* Params:
+- _lastActionBlock – The block when the user last deposited or withdrew.
+- _lastValidActionBlock – Last valid action block within the IFO period.
+- _lastActionBalance – User’s balance at the last action.
+- _lastValidActionBalance – User’s balance at the last valid action within the IFO.
+- _lastAvgBalance – The last recorded average balance for the user.
+
+* Internal
+* Returns `uint256` avgBalance
+
+This function calculates the user’s latest average balance during the IFO period.
+
+The function first checks if the last action block is after the end block. If it is, the function returns the last average balance without further calculations. For a new IFO participant, the function initializes the last valid action block to the start block and the last average balance to 0. The function then calculates the average balance over the period between the last action and the current block, up to the end block. This updated average balance is used for determining the user’s contribution to the IFO.
+
+#### _updateUserIFO() FUNCTION
+
+```solidity
+function _updateUserIFO(uint256 _amount, IFOActions _action) internal
+```
+
+* Internal
+* Params:
+- _amount: the cake amount that need be add or sub
+- _action: IFOActions enum element
+* Events
+- Emits `UpdateUserIFO()` event
+
+
+This function pdates a user’s IFO information, including balances, action blocks, and average balance, based on whether the user is depositing or withdrawing funds.
+Called whenever a user deposits or withdraws funds during the IFO, ensuring accurate record-keeping and contribution tracking.
+
+The `_updateUserIFO` function initiates by calculating the user's latest average balance using `_calculateAvgBalance` if an IFO is currently available. It then updates the user's action balance based on the type of action being performed. For a withdrawal, it subtracts the specified amount from the `lastActionBalance`, whereas for a deposit, it adds the amount to `lastActionBalance`. If the current block is within the IFO period, the function updates the `lastValidActionBalance` and `lastValidActionBlock`. Subsequently, it records the updated `lastAvgBalance` and sets `lastActionBlock` to the current block. Finally, the function emits the UpdateUserIFO event, which logs all the updated IFO-related data for tracking and monitoring purposes.
