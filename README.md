@@ -1,4 +1,4 @@
-# pancakeswap-IFOPool-smart-contract-Reviews
+# Pancakeswap-IFOPool-smart-contract-Reviews
 
 The IFOPool smart contract is a contract made to manage funds for a type staking pool, known as an Initial Farm Offering (IFO) pool. Users can deposit tokens, accumulate shares based on their deposits, and withdraw with possible penalties depending on the time of their actions.
 
@@ -45,22 +45,25 @@ function pendingCake(uint256 _pid, address _user) external view returns (uint256
 
 
 ### CONTRACT VARIABLES
-
+```solidity
 struct UserInfo {
     uint256 shares;
     uint256 lastDepositedTime;
     uint256 cakeAtLastUserAction;
     uint256 lastUserActionTime;
 }
-
+```
 This struct holds the user's information:
 
 shares: Represents the user's share in the pool.
+
 lastDepositedTime: Timestamp of the user's last deposit, crucial for calculating early withdrawal fees.
+
 cakeAtLastUserAction: Tracks the amount of tokens at the last user action (deposit/withdraw).
+
 lastUserActionTime: Timestamp of the last user action, useful for calculating fees or penalties based on inactivity.
 
-
+```solidity
 struct UserIFOInfo {
     uint256 lastActionBalance;
     uint256 lastValidActionBalance;
@@ -68,17 +71,21 @@ struct UserIFOInfo {
     uint256 lastValidActionBlock;
     uint256 lastAvgBalance;
 }
+```
+
 This struct is specific to IFOs and maintains a history of user actions and balances:
 
 - lastActionBalance and lastValidActionBalance store the user’s balance for tracking purposes within IFO validity periods.
 - lastActionBlock and lastValidActionBlock track the block numbers associated with these actions.
 - lastAvgBalance calculates the average balance within the IFO period, often used to determine eligibility for rewards in an IFO.
 
-
+```solidity
 enum IFOActions {
     Deposit,
     Withdraw
 }
+```
+
 Enumerates possible actions, allowing the _updateUserIFO function to distinguish between deposits and withdrawals.
 
 
@@ -124,25 +131,93 @@ The constructor initializes the contract and performs initial checks on startBlo
 
 #### ONLYADMIN:
 
+```solidity
 modifier onlyAdmin() {
     require(msg.sender == admin, "admin: wut?");
     _;
 } 
+```
 
 - This restricts functions it's applied to, to be called only by the contract owner.
 
 #### NOTCONTRACT:
 
+```solidity
 modifier notContract() {
     require(!_isContract(msg.sender), "contract not allowed");
     require(msg.sender == tx.origin, "proxy contract not allowed");
     _;
 }
+```
 
 - Prevents smart contracts or proxies from interacting with this contract by ensuring msg.sender is not a contract and that it directly originates from the user’s wallet. Makes use of internal helper function ```_isContract``` that returns boolean value to verify is caller is contract.
 
-```modifier whenNotPaused```: Prevents deposits when contract is paused
-```modifier notContract```: Prevents contract interactions
+```solidity 
+modifier whenNotPaused
+``` 
+
+Prevents deposits when contract is paused
+
+
+```solidity
+modifier notContract
+``` 
+
+Prevents contract interactions
+
+## Events
+
+```solidity
+event Pause();
+```
+This event is logged whenever the contract’s operational state is paused.
+
+```solidity
+event Unpause();
+```
+This event is logged whenever the contract’s operational state is Unpaused.
+
+```solidity
+event Deposit(address indexed sender, uint256 amount, uint256 shares, uint256 lastDepositedTime);
+```
+Logs details whenever a user deposits funds into the contract. This includes the user’s address, the deposited amount, the shares received, and the time of the deposit.
+
+```solidity
+event Withdraw(address indexed sender, uint256 amount, uint256 shares);
+```
+Logs whenever a user withdraws funds, recording the user’s address, the amount withdrawn, and the shares burned.
+
+```solidity
+event Harvest(address indexed sender, uint256 performanceFee, uint256 callFee);
+```
+Logs when a harvest action is executed. It records the caller’s address and the performance and call fees applied during the harvest.
+
+```solidity
+event UpdateEndBlock(uint256 endBlock);
+```
+Logs whenever the end block for a specific function or staking period is updated.
+
+```solidity
+event ZeroFreeIFO(address indexed sender, uint256 currentBlock);
+```
+Logs when a user or admin interacts with the contract in a way that zeroes out or terminates a free Initial Farm Offering (IFO) opportunity.
+
+```solidity
+event UpdateStartAndEndBlocks(uint256 startBlock, uint256 endBlock);
+```
+Logs updates to the start and end blocks that define the active period for certain contract functionalities, like staking or reward distribution.
+
+```solidity
+event UpdateUserIFO(
+    address indexed sender,
+    uint256 lastAvgBalance,
+    uint256 lastActionBalance,
+    uint256 lastValidActionBalance,
+    uint256 lastActionBlock,
+    uint256 lastValidActionBlock
+);
+```
+Logs specific details about a user’s interactions with the IFO. This includes the user’s last average balance, the last and last valid action balances, and the corresponding block numbers.
 
 
 ## FUNCTIONS
@@ -153,13 +228,11 @@ modifier notContract() {
   function deposit(uint256 _amount) external whenNotPaused notContract
 ```
 
-- Deposits funds into the Cake Vault.
-- Only possible when contract not paused as a result of the whenNotPaused modifier. 
-- Only callable by EOAs and not contracts
-
+* Deposits funds into the Cake Vault.
+* Only possible when contract not paused as a result of the whenNotPaused modifier. 
+* Only callable by EOAs and not contracts
 * param - `_amount`: number of tokens to deposit (in CAKE)
-
-Process Flow:
+* Emits the Deposit event
 
 The deposit function first validates the amount to be deposited. It then calculates the current pool balance and transfers the tokens from the user. The function also calculates the shares as follows:
 
@@ -234,6 +307,11 @@ The `emergencyWithdrawAll` function enables users to withdraw all their funds in
 function harvest() external notContract whenNotPaused
 ```
 
+* External
+* Cannot be called by contracts 
+* Only callable whenNotPaused
+* Emits the `Harvest` event
+
 This function reinvests any CAKE tokens earned by the pool back into the MasterChef contract.
 
 The harvest function is designed to reinvest CAKE tokens earned by the pool back into the MasterChef contract, maximizing returns. It can only be called by external addresses when the contract is not paused, ensuring owner control and preventing automated contract exploitation. The function first checks the current CAKE balance, then triggers a harvest action without withdrawing staked tokens to pull in pending rewards. The earned amount is calculated, and if positive, performance and call fees are applied and distributed to the treasury and the caller, respectively. The remaining tokens are then staked back into MasterChef to continue earning rewards, and the last harvest time is updated.
@@ -287,7 +365,6 @@ function setPerformanceFee(uint256 _performanceFee) external onlyAdmin
 * Only callable by the contract admin.
 
 This function allows the contract admin to set a performance fee, which is a percentage-based fee levied on profits. The admin can adjust this fee as needed, but it is restricted from exceeding the predefined maximum limit, MAX_PERFORMANCE_FEE. This ensures that the performance fee remains within a reasonable and controlled range, preventing excessive fees from being imposed. By enabling the admin to adjust the performance fee within these defined limits, the function provides flexibility and adaptability in managing the contract's fee structure.
-
 
 
 #### setCallFee() FUNCTION
@@ -355,8 +432,68 @@ function updateEndBlock(uint256 _endBlock) external onlyAdmin
 * It allows the admin to update end block
 * This function is only callable by owner.
 * _endBlock: the new end block
+* Emits the `UpdateEndBlock` event
 
 This function enables the admin to prolong the end block of a specific period, such as staking rewards or IFO, as long as the new end block is in the future. This admin-only functionality provides flexibility in extending the duration of a feature if necessary.
+
+
+#### emergencyWithdraw() FUNCTION
+
+```solidity
+function emergencyWithdraw() external onlyAdmin
+``` 
+
+* External
+* Withdraws from MasterChef to Vault without caring about rewards.
+* EMERGENCY ONLY. Only callable by the contract admin.
+* Interacts with `emergencyWithdraw` function from `IMasterChef` Interface
+
+This function allows the admin to withdraw funds from MasterChef to the vault in emergency situations, disregarding rewards. It can only be called by the admin and will pause the contract if it's not already paused. Its primary use is in emergency scenarios where funds need to be recovered.
+
+
+
+#### inCaseTokensGetStuck() FUNCTION
+
+```solidity
+function inCaseTokensGetStuck(address _token) external onlyAdmin 
+```
+
+* Withdraw unexpected tokens sent to the Cake Vault
+* Callable by only the Admin
+* Intercats with IERC20 `safeTransferFrom` and `balanceOf` functions
+
+This function allows the admin to recover tokens that were mistakenly sent to the vault, excluding the primary deposit and receipt tokens. It ensures that only non-primary tokens are retrieved, safeguarding against accidental token transfers to the vault.
+
+
+
+#### pause() FUNCTION
+
+```solidity
+function pause() external onlyAdmin whenNotPaused
+```
+
+* External
+* Triggers stopped state.
+* Only possible when contract not paused.
+* Callable only by Admin
+* Emis the Pause event
+
+Provides an emergency stop mechanism for the contract.
+
+This function pauses the contract's operations, effectively halting most functions, and can only be called by the admin when the contract is not already in a paused state.
+
+
+#### unpause() FUNCTION
+
+
+* Returns to normal state
+* Only possible when contract is paused.
+* Emits the Unpause event
+
+function unpause() external onlyAdmin whenPaused
+
+This function is used to resume the normal operations of the contract after a pause. It can only be executed when the contract is in a paused state and is restricted to the admin. The primary use of this function is to allow the admin to re-enable the contract functions after an emergency pause.
+
 
 
 ## HELPER FUNCTIONS
@@ -523,6 +660,7 @@ function _calculateAvgBalance(
 This function calculates the user’s latest average balance during the IFO period.
 
 The function first checks if the last action block is after the end block. If it is, the function returns the last average balance without further calculations. For a new IFO participant, the function initializes the last valid action block to the start block and the last average balance to 0. The function then calculates the average balance over the period between the last action and the current block, up to the end block. This updated average balance is used for determining the user’s contribution to the IFO.
+
 
 #### _updateUserIFO() FUNCTION
 
